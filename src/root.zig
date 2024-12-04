@@ -2,17 +2,31 @@ const std = @import("std");
 const builtin = @import("builtin");
 const root = @import("root");
 const assert = std.debug.assert;
-
 const tracy_zig = @This();
 
+// Set up the implementation based on what's found in root.
 const impl_disabled = @import("impl_disabled");
 const impl = if (@hasDecl(root, "tracy_impl")) b: {
     assert(builtin.cpu.arch.endian() == .little);
     break :b root.tracy_impl;
 } else impl_disabled;
 
+// Expose our global options, and whether or not we're enabled publicly.
+pub const Options = struct {
+    on_demand: bool = false,
+    no_broadcast: bool = false,
+    only_localhost: bool = false,
+    only_ipv4: bool = false,
+    delayed_init: bool = false,
+    manual_lifetime: bool = false,
+    verbose: bool = false,
+    data_port: ?u64 = null,
+    broadcast_port: ?u64 = null,
+};
 pub const enabled = impl != impl_disabled;
+pub const options: Options = if (@hasDecl(root, "tracy_options")) root.options else .{};
 
+// Bindings follow.
 pub const SourceLocation = extern struct {
     name: ?[*:0]const u8,
     function: [*:0]const u8,
@@ -26,16 +40,16 @@ pub const SourceLocation = extern struct {
         color: Color = .{ .r = 0, .g = 0, .b = 0, .a = 0 },
     };
 
-    pub fn init(comptime options: InitOptions) *const SourceLocation {
+    pub fn init(comptime opt: InitOptions) *const SourceLocation {
         if (enabled) {
             comptime assert(@sizeOf(@This()) == @sizeOf(impl.c.___tracy_source_location_data));
         }
         return comptime &.{
-            .name = options.name,
-            .function = options.src.fn_name.ptr,
-            .file = options.src.file.ptr,
-            .line = options.src.line,
-            .color = options.color,
+            .name = opt.name,
+            .function = opt.src.fn_name.ptr,
+            .file = opt.src.file.ptr,
+            .line = opt.src.line,
+            .color = opt.color,
         };
     }
 };
@@ -43,10 +57,10 @@ pub const SourceLocation = extern struct {
 pub const Zone = struct {
     ctx: if (enabled) impl.c.TracyCZoneCtx else void,
 
-    pub inline fn begin(comptime options: SourceLocation.InitOptions) @This() {
+    pub inline fn begin(comptime opt: SourceLocation.InitOptions) @This() {
         if (enabled) {
             return .{
-                .ctx = impl.c.___tracy_emit_zone_begin(@intFromPtr(SourceLocation.init(options)), 1),
+                .ctx = impl.c.___tracy_emit_zone_begin(@intFromPtr(SourceLocation.init(opt)), 1),
             };
         } else {
             return .{ .ctx = {} };
@@ -110,24 +124,24 @@ pub const GpuQueue = struct {
 
     context: if (enabled) u8 else void,
 
-    pub inline fn init(options: InitOptions) @This() {
+    pub inline fn init(opt: InitOptions) @This() {
         if (enabled) {
             impl.c.___tracy_emit_gpu_new_context_serial(.{
-                .gpuTime = @bitCast(options.gpu_time),
-                .period = options.period,
-                .context = options.context,
-                .flags = @bitCast(options.flags),
-                .type = @intFromEnum(options.type),
+                .gpuTime = @bitCast(opt.gpu_time),
+                .period = opt.period,
+                .context = opt.context,
+                .flags = @bitCast(opt.flags),
+                .type = @intFromEnum(opt.type),
             });
 
-            if (options.name) |name| {
+            if (opt.name) |name| {
                 impl.c.___tracy_emit_gpu_context_name_serial(.{
-                    .context = options.context,
+                    .context = opt.context,
                     .name = name.ptr,
                     .len = @intCast(name.len),
                 });
             }
-            return .{ .context = options.context };
+            return .{ .context = opt.context };
         } else {
             return .{ .context = {} };
         }
@@ -138,10 +152,10 @@ pub const GpuQueue = struct {
         query_id: u16,
     };
 
-    pub inline fn beginZone(self: @This(), options: BeginZoneOptions) void {
+    pub inline fn beginZone(self: @This(), opt: BeginZoneOptions) void {
         if (enabled) impl.c.___tracy_emit_gpu_zone_begin_serial(.{
-            .srcloc = @intFromPtr(options.loc),
-            .queryId = options.query_id,
+            .srcloc = @intFromPtr(opt.loc),
+            .queryId = opt.query_id,
             .context = self.context,
         });
     }
@@ -158,10 +172,10 @@ pub const GpuQueue = struct {
         gpu_time: u64,
     };
 
-    pub inline fn emitTime(self: @This(), options: EmitTimeOptions) void {
+    pub inline fn emitTime(self: @This(), opt: EmitTimeOptions) void {
         if (enabled) impl.c.___tracy_emit_gpu_time_serial(.{
-            .gpuTime = @bitCast(options.gpu_time),
-            .queryId = options.query_id,
+            .gpuTime = @bitCast(opt.gpu_time),
+            .queryId = opt.query_id,
             .context = self.context,
         });
     }
@@ -171,10 +185,10 @@ pub const GpuQueue = struct {
         cpu_delta: i64,
     };
 
-    pub inline fn calibrate(self: @This(), options: CalibrateOptions) void {
+    pub inline fn calibrate(self: @This(), opt: CalibrateOptions) void {
         if (enabled) impl.c.___tracy_emit_gpu_calibration_serial(.{
-            .gpuTime = @bitCast(options.gpu_time),
-            .cpuDelta = options.cpu_delta,
+            .gpuTime = @bitCast(opt.gpu_time),
+            .cpuDelta = opt.cpu_delta,
             .context = self.context,
         });
     }
@@ -188,10 +202,10 @@ pub const GpuQueue = struct {
 };
 
 pub const Lock = opaque {
-    pub fn init(comptime options: SourceLocation.InitOptions) *@This() {
+    pub fn init(comptime opt: SourceLocation.InitOptions) *@This() {
         if (enabled) {
             return @ptrCast(impl.c.___tracy_announce_lockable_ctx(@ptrCast(
-                SourceLocation.init(options),
+                SourceLocation.init(opt),
             )));
         }
     }
@@ -241,17 +255,17 @@ pub const FrameImageOptions = struct {
     flip: bool,
 };
 
-pub inline fn frameImage(options: FrameImageOptions) void {
-    assert(options.width % 4 == 0);
-    assert(options.height % 4 == 0);
-    assert(options.image.len == options.width * options.height * 3);
-    assert(options.width * options.height * 3 / 6 <= 262144);
+pub inline fn frameImage(opt: FrameImageOptions) void {
+    assert(opt.width % 4 == 0);
+    assert(opt.height % 4 == 0);
+    assert(opt.image.len == opt.width * opt.height * 3);
+    assert(opt.width * opt.height * 3 / 6 <= 262144);
     if (enabled) impl.c.___tracy_emit_frame_image(
-        options.image.ptr,
-        options.width,
-        options.height,
-        options.offset,
-        @intFromBool(options.flip),
+        opt.image.ptr,
+        opt.width,
+        opt.height,
+        opt.offset,
+        @intFromBool(opt.flip),
     );
 }
 
@@ -274,12 +288,12 @@ pub const MessageOptions = struct {
     color: ?Color = null,
 };
 
-pub fn message(options: MessageOptions) void {
+pub fn message(opt: MessageOptions) void {
     if (enabled) {
-        if (options.color) |color| {
-            impl.c.___tracy_emit_messageC(options.text.ptr, options.text.len, @bitCast(color), 0);
+        if (opt.color) |color| {
+            impl.c.___tracy_emit_messageC(opt.text.ptr, opt.text.len, @bitCast(color), 0);
         } else {
-            impl.c.___tracy_emit_message(options.text.ptr, options.text.len, 0);
+            impl.c.___tracy_emit_message(opt.text.ptr, opt.text.len, 0);
         }
     }
 }
@@ -298,12 +312,12 @@ pub const PlotOptions = struct {
     value: Value,
 };
 
-pub fn plot(options: PlotOptions) void {
+pub fn plot(opt: PlotOptions) void {
     if (enabled) {
-        switch (options.value) {
-            .f32 => |n| impl.c.___tracy_emit_plot_float(options.name, n),
-            .f64 => |n| impl.c.___tracy_emit_plot(options.name, n),
-            .i64 => |n| impl.c.___tracy_emit_plot_int(options.name, n),
+        switch (opt.value) {
+            .f32 => |n| impl.c.___tracy_emit_plot_float(opt.name, n),
+            .f64 => |n| impl.c.___tracy_emit_plot(opt.name, n),
+            .i64 => |n| impl.c.___tracy_emit_plot_int(opt.name, n),
         }
     }
 }
@@ -328,13 +342,13 @@ pub const PlotConfigOptions = struct {
     color: Color = .{ .r = 0, .g = 0, .b = 0, .a = 0 },
 };
 
-pub fn plotConfig(options: PlotConfigOptions) void {
+pub fn plotConfig(opt: PlotConfigOptions) void {
     if (enabled) impl.c.___tracy_emit_plot_config(
-        options.name,
-        @intFromEnum(options.format),
-        @intFromEnum(options.mode),
-        @intFromBool(options.fill),
-        @bitCast(options.color),
+        opt.name,
+        @intFromEnum(opt.format),
+        @intFromEnum(opt.mode),
+        @intFromBool(opt.fill),
+        @bitCast(opt.color),
     );
 }
 
@@ -370,18 +384,18 @@ pub const FreeOptions = struct {
     secure: bool = false,
 };
 
-pub fn free(options: FreeOptions) void {
+pub fn free(opt: FreeOptions) void {
     if (enabled) {
-        if (options.pool_name) |pool_name| {
+        if (opt.pool_name) |pool_name| {
             impl.c.___tracy_emit_memory_free_named(
-                options.ptr,
-                @intFromBool(options.secure),
+                opt.ptr,
+                @intFromBool(opt.secure),
                 pool_name,
             );
         } else {
             impl.c.___tracy_emit_memory_free(
-                options.ptr,
-                @intFromBool(options.secure),
+                opt.ptr,
+                @intFromBool(opt.secure),
             );
         }
     }

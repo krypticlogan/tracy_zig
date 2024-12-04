@@ -6,6 +6,10 @@ This library aims to expose all features available in Tracy's C API, including f
 
 ## Integration
 
+You can integrate Tracy into your library without forcing it on your downstream users. This allows library developers to use Tracy without inconveniencing an application developer who may not be using it.
+
+This section walks you through the integration. [There are plans to simplify this.](https://github.com/Games-by-Mason/tracy_zig/issues/8)
+
 ### Libraries
 
 To integrate Tracy with your library, just add the Tracy module in your build.zig.
@@ -53,18 +57,32 @@ exe.root_module.addImport("tracy", tracy.module("tracy"));
 // Pick an implementation based on the build flags.
 // Don't build both, we don't want to link with Tracy at all unless we intend to enable it.
 if (tracy_enabled) {
-	// The user asked to enable Tracy, use the real implementation
-	exe.root_module.addImport("tracy_impl", "tracy_impl_enabled");
+    // The user asked to enable Tracy, use the real implementation
+    exe.root_module.addImport("tracy_impl", tracy.module("tracy_impl_enabled"));
 } else {
-	// The user asked to disable Tracy, use the dummy implementation
-	exe.root_module.addImport("tracy_impl", "tracy_impl_disabled");
+    // The user asked to disable Tracy, use the dummy implementation
+    exe.root_module.addImport("tracy_impl", tracy.module("tracy_impl_disabled"));
 }
 ```
 
 main.zig:
 ```zig
-// Advertise the chosen Tracy implementation. This is required.
+// If `tracy_impl` is not set in your root file, Tracy integration will be disabled.
 pub const tracy_impl = @import("tracy_impl");
+
+// You can optionally configure Tracy by setting `tracy_options` in your root file.
+pub const tracy = @import("tracy");
+pub const tracy_options: tracy.Options {
+    .on_demand = false,
+    .no_broadcast = false,
+    .only_localhost = false,
+    .only_ipv4 = false,
+    .delayed_init = false,
+    .manual_lifetime = false,
+    .verbose = false,
+    .data_port = null,
+    .broadcast_port = null,
+};
 ```
 
 ## Mark Up
@@ -73,9 +91,9 @@ You can mark CPU zones with the following code, see the source for more options:
 ```zig
 fn foo() void {
     const zone = Zone.begin(.{
-    	.name = "Do some work",
-    	.src = @src(),
-    	.color = .tomato,
+        .name = "Do some work",
+        .src = @src(),
+        .color = .tomato,
     });
     defer zone.end();
     // Do some work
@@ -91,8 +109,8 @@ const allocator = tracy_allocator.allocator();
 You can write your logs to Tracy with:
 ```zig
 tracy.message(.{
-	.text = "Hello, world!",
-	.color = .light_green,
+    .text = "Hello, world!",
+    .color = .light_green,
 });
 ```
 
