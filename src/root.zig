@@ -24,7 +24,7 @@ pub const Options = struct {
     broadcast_port: ?u64 = null,
 };
 pub const enabled = impl != impl_disabled;
-pub const options: Options = if (@hasDecl(root, "tracy_options")) root.options else .{};
+pub const options: Options = if (@hasDecl(root, "tracy_options")) root.tracy_options else .{};
 
 // Bindings follow.
 pub const SourceLocation = extern struct {
