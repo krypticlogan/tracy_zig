@@ -46,7 +46,7 @@ pub fn build(b: *std.Build) void {
         },
         .flags = &.{},
     });
-    lib_tracy.defineCMacro("TRACY_ENABLE", "");
+    lib_tracy.root_module.addCMacro("TRACY_ENABLE", "");
     lib_tracy.addIncludePath(upstream.path("public/tracy"));
     lib_tracy.installHeader(upstream.path("public/tracy/TracyC.h"), "tracy/tracy/TracyC.h");
     const hopt: std.Build.Step.Compile.HeaderInstallation.Directory.Options = .{

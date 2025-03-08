@@ -1,5 +1,7 @@
 .{
-    .name = "tracy_zig",
+    .name = .tracy,
+    .fingerprint = 0x255a89ee057cb947,
+    .minimum_zig_version = "0.14.0",
     .version = "0.0.0",
     .dependencies = .{
         .tracy = .{
