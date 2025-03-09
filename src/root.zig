@@ -411,8 +411,9 @@ pub const Allocator = struct {
             .ptr = self,
             .vtable = &.{
                 .alloc = @This().alloc,
-                .resize = resize,
+                .resize = @This().resize,
                 .free = @This().free,
+                .remap = @This().remap,
             },
         };
     }
@@ -420,11 +421,11 @@ pub const Allocator = struct {
     fn alloc(
         ctx: *anyopaque,
         len: usize,
-        log2_ptr_align: u8,
+        alignment: std.mem.Alignment,
         ra: usize,
     ) ?[*]u8 {
         const self: *@This() = @ptrCast(@alignCast(ctx));
-        const result = self.parent.rawAlloc(len, log2_ptr_align, ra);
+        const result = self.parent.rawAlloc(len, alignment, ra);
         if (result) |ptr| {
             tracy_zig.alloc(.{
                 .ptr = ptr,
@@ -439,12 +440,12 @@ pub const Allocator = struct {
     fn resize(
         ctx: *anyopaque,
         buf: []u8,
-        log2_buf_align: u8,
+        alignment: std.mem.Alignment,
         new_len: usize,
         ra: usize,
     ) bool {
         const self: *@This() = @ptrCast(@alignCast(ctx));
-        const result = self.parent.rawResize(buf, log2_buf_align, new_len, ra);
+        const result = self.parent.rawResize(buf, alignment, new_len, ra);
         if (result) {
             tracy_zig.free(.{
                 .ptr = buf.ptr,
@@ -464,16 +465,41 @@ pub const Allocator = struct {
     fn free(
         ctx: *anyopaque,
         buf: []u8,
-        log2_buf_align: u8,
+        alignment: std.mem.Alignment,
         ra: usize,
     ) void {
         const self: *@This() = @ptrCast(@alignCast(ctx));
-        self.parent.rawFree(buf, log2_buf_align, ra);
+        self.parent.rawFree(buf, alignment, ra);
         tracy_zig.free(.{
             .ptr = buf.ptr,
             .pool_name = self.pool_name,
             .secure = self.secure,
         });
+    }
+
+    fn remap(
+        ctx: *anyopaque,
+        buf: []u8,
+        alignment: std.mem.Alignment,
+        new_len: usize,
+        ra: usize,
+    ) ?[*]u8 {
+        const self: *@This() = @ptrCast(@alignCast(ctx));
+        const result = self.parent.rawRemap(buf, alignment, new_len, ra);
+        if (result) |remapped| {
+            tracy_zig.free(.{
+                .ptr = buf.ptr,
+                .pool_name = self.pool_name,
+                .secure = self.secure,
+            });
+            tracy_zig.alloc(.{
+                .ptr = remapped,
+                .size = new_len,
+                .secure = self.secure,
+                .pool_name = self.pool_name,
+            });
+        }
+        return result;
     }
 };
 
