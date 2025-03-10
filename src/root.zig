@@ -71,7 +71,7 @@ pub const Zone = struct {
         if (enabled) impl.c.___tracy_emit_zone_end(self.ctx);
     }
 
-    pub inline fn text(self: @This(), txt: [:0]const u8) void {
+    pub inline fn text(self: @This(), txt: []const u8) void {
         if (enabled) impl.c.___tracy_emit_zone_text(self.ctx, txt.ptr, txt.len);
     }
 
@@ -83,7 +83,7 @@ pub const Zone = struct {
         if (enabled) impl.c.___tracy_emit_zone_value(self.ctx, val);
     }
 
-    pub inline fn name(self: @This(), txt: [:0]const u8) void {
+    pub inline fn name(self: @This(), txt: []const u8) void {
         if (enabled) impl.c.___tracy_emit_zone_name(self.ctx, txt.ptr, txt.len);
     }
 };
