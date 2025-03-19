@@ -22,6 +22,17 @@ pub const Options = struct {
     verbose: bool = false,
     data_port: ?u64 = null,
     broadcast_port: ?u64 = null,
+    callstack: Callstack = .{},
+
+    pub const Callstack = struct {
+        zone: bool = false,
+        allocation: bool = false,
+        gpu: bool = false,
+        message: bool = false,
+
+        /// The maximum number of callstacks to capture.
+        depth: u32 = 10,
+    };
 };
 pub const enabled = impl != impl_disabled;
 pub const options: Options = if (@hasDecl(root, "tracy_options")) root.tracy_options else .{};
@@ -60,7 +71,17 @@ pub const Zone = struct {
     pub inline fn begin(comptime opt: SourceLocation.InitOptions) @This() {
         if (enabled) {
             return .{
-                .ctx = impl.c.___tracy_emit_zone_begin(@intFromPtr(SourceLocation.init(opt)), 1),
+                .ctx = if (options.callstack.zone)
+                    impl.c.___tracy_emit_zone_begin_callstack(
+                        @intFromPtr(SourceLocation.init(opt)),
+                        options.callstack.depth,
+                        1,
+                    )
+                else
+                    impl.c.___tracy_emit_zone_begin(
+                        @intFromPtr(SourceLocation.init(opt)),
+                        1,
+                    ),
             };
         } else {
             return .{ .ctx = {} };
@@ -153,11 +174,21 @@ pub const GpuQueue = struct {
     };
 
     pub inline fn beginZone(self: @This(), opt: BeginZoneOptions) void {
-        if (enabled) impl.c.___tracy_emit_gpu_zone_begin_serial(.{
-            .srcloc = @intFromPtr(opt.loc),
-            .queryId = opt.query_id,
-            .context = self.context,
-        });
+        if (enabled) {
+            if (options.callstack.gpu)
+                impl.c.___tracy_emit_gpu_zone_begin_callstack_serial(.{
+                    .srcloc = @intFromPtr(opt.loc),
+                    .depth = options.callstack.depth,
+                    .queryId = opt.query_id,
+                    .context = self.context,
+                })
+            else
+                impl.c.___tracy_emit_gpu_zone_begin_serial(.{
+                    .srcloc = @intFromPtr(opt.loc),
+                    .queryId = opt.query_id,
+                    .context = self.context,
+                });
+        }
     }
 
     pub inline fn endZone(self: @This(), query_id: u16) void {
@@ -291,9 +322,15 @@ pub const MessageOptions = struct {
 pub fn message(opt: MessageOptions) void {
     if (enabled) {
         if (opt.color) |color| {
-            impl.c.___tracy_emit_messageC(opt.text.ptr, opt.text.len, @bitCast(color), 0);
+            if (options.callstack.message)
+                impl.c.___tracy_emit_messageC(opt.text.ptr, opt.text.len, @bitCast(color), 0)
+            else
+                impl.c.___tracy_emit_messageC(opt.text.ptr, opt.text.len, @bitCast(color), options.callstack.depth);
         } else {
-            impl.c.___tracy_emit_message(opt.text.ptr, opt.text.len, 0);
+            if (options.callstack.message)
+                impl.c.___tracy_emit_message(opt.text.ptr, opt.text.len, 0)
+            else
+                impl.c.___tracy_emit_message(opt.text.ptr, opt.text.len, options.callstack.depth);
         }
     }
 }
@@ -362,18 +399,35 @@ pub const AllocOptions = struct {
 pub fn alloc(ao: AllocOptions) void {
     if (enabled) {
         if (ao.pool_name) |pool_name| {
-            impl.c.___tracy_emit_memory_alloc_named(
-                ao.ptr,
-                ao.size,
-                @intFromBool(ao.secure),
-                pool_name,
-            );
+            if (options.callstack.allocation)
+                impl.c.___tracy_emit_memory_alloc_callstack_named(
+                    ao.ptr,
+                    ao.size,
+                    options.callstack.depth,
+                    @intFromBool(ao.secure),
+                    pool_name,
+                )
+            else
+                impl.c.___tracy_emit_memory_alloc_named(
+                    ao.ptr,
+                    ao.size,
+                    @intFromBool(ao.secure),
+                    pool_name,
+                );
         } else {
-            impl.c.___tracy_emit_memory_alloc(
-                ao.ptr,
-                ao.size,
-                @intFromBool(ao.secure),
-            );
+            if (options.callstack.allocation)
+                impl.c.___tracy_emit_memory_alloc_callstack(
+                    ao.ptr,
+                    ao.size,
+                    options.callstack.depth,
+                    @intFromBool(ao.secure),
+                )
+            else
+                impl.c.___tracy_emit_memory_alloc(
+                    ao.ptr,
+                    ao.size,
+                    @intFromBool(ao.secure),
+                );
         }
     }
 }
@@ -387,16 +441,31 @@ pub const FreeOptions = struct {
 pub fn free(opt: FreeOptions) void {
     if (enabled) {
         if (opt.pool_name) |pool_name| {
-            impl.c.___tracy_emit_memory_free_named(
-                opt.ptr,
-                @intFromBool(opt.secure),
-                pool_name,
-            );
+            if (options.callstack.allocation)
+                impl.c.___tracy_emit_memory_free_callstack_named(
+                    opt.ptr,
+                    options.callstack.depth,
+                    @intFromBool(opt.secure),
+                    pool_name,
+                )
+            else
+                impl.c.___tracy_emit_memory_free_named(
+                    opt.ptr,
+                    @intFromBool(opt.secure),
+                    pool_name,
+                );
         } else {
-            impl.c.___tracy_emit_memory_free(
-                opt.ptr,
-                @intFromBool(opt.secure),
-            );
+            if (options.callstack.allocation)
+                impl.c.___tracy_emit_memory_free_callstack(
+                    opt.ptr,
+                    options.callstack.depth,
+                    @intFromBool(opt.secure),
+                )
+            else
+                impl.c.___tracy_emit_memory_free(
+                    opt.ptr,
+                    @intFromBool(opt.secure),
+                );
         }
     }
 }
