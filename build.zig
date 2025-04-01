@@ -5,7 +5,10 @@ pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
     const optimize_external = switch (optimize) {
-        .Debug => .ReleaseFast,
+        // See https://github.com/Games-by-Mason/tracy_zig/issues/6
+        //
+        // Once this is resolved, this should be release safe instead.
+        .Debug, .ReleaseSafe => .ReleaseFast,
         else => optimize,
     };
 
