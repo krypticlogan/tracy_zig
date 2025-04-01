@@ -72,7 +72,7 @@ pub const tracy_impl = @import("tracy_impl");
 
 // You can optionally configure Tracy by setting `tracy_options` in your root file.
 pub const tracy = @import("tracy");
-pub const tracy_options: tracy.Options {
+pub const tracy_options: tracy.Options = .{
     .on_demand = false,
     .no_broadcast = false,
     .only_localhost = false,
@@ -82,6 +82,7 @@ pub const tracy_options: tracy.Options {
     .verbose = false,
     .data_port = null,
     .broadcast_port = null,
+    .default_callstack_depth = 0,
 };
 ```
 
