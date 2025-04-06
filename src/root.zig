@@ -78,17 +78,26 @@ pub const Zone = struct {
 
     pub inline fn begin(comptime opt: BeginOptions) @This() {
         comptime assert(opt.callstack_depth <= max_callstack_depth);
+        const loc = SourceLocation.init(.{
+            .name = opt.name,
+            .src = opt.src,
+            .color = opt.color,
+        });
+        return beginFromPtrCallstack(loc, opt.callstack_depth);
+    }
+
+    /// Similar to `begin`, but the source location can by set dynamically.
+    pub inline fn beginFromPtr(loc: *const SourceLocation) @This() {
+        comptime assert(options.default_callstack_depth <= max_callstack_depth);
+        return beginFromPtrCallstack(loc, options.default_callstack_depth);
+    }
+
+    /// Similar to `beginFromPtr`, but the default callstack depth can be overridden.
+    pub inline fn beginFromPtrCallstack(loc: *const SourceLocation, depth: u6) @This() {
+        assert(depth <= max_callstack_depth);
         if (enabled) {
             return .{
-                .ctx = impl.c.___tracy_emit_zone_begin_callstack(
-                    @intFromPtr(SourceLocation.init(.{
-                        .name = opt.name,
-                        .src = opt.src,
-                        .color = opt.color,
-                    })),
-                    opt.callstack_depth,
-                    1,
-                ),
+                .ctx = impl.c.___tracy_emit_zone_begin_callstack(@intFromPtr(loc), depth, 1),
             };
         } else {
             return .{ .ctx = {} };
@@ -245,9 +254,15 @@ pub const GpuQueue = struct {
 pub const Lock = opaque {
     pub fn init(comptime opt: SourceLocation.InitOptions) *@This() {
         if (enabled) {
-            return @ptrCast(impl.c.___tracy_announce_lockable_ctx(@ptrCast(
-                SourceLocation.init(opt),
-            )));
+            const loc = SourceLocation.init(opt);
+            return initFromPtr(loc);
+        }
+    }
+
+    /// Similar to `init`, but the source location can be set dynamically.
+    pub fn initFromPtr(loc: *const SourceLocation) *@This() {
+        if (enabled) {
+            return @ptrCast(impl.c.___tracy_announce_lockable_ctx(@ptrCast(loc)));
         }
     }
 
