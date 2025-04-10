@@ -473,15 +473,19 @@ pub const Allocator = struct {
     parent: std.mem.Allocator,
 
     pub fn allocator(self: *@This()) std.mem.Allocator {
-        return .{
-            .ptr = self,
-            .vtable = &.{
-                .alloc = @This().alloc,
-                .resize = @This().resize,
-                .free = @This().free,
-                .remap = @This().remap,
-            },
-        };
+        if (enabled) {
+            return .{
+                .ptr = self,
+                .vtable = &.{
+                    .alloc = @This().alloc,
+                    .resize = @This().resize,
+                    .free = @This().free,
+                    .remap = @This().remap,
+                },
+            };
+        } else {
+            return self.parent;
+        }
     }
 
     fn alloc(
