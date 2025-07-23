@@ -314,8 +314,8 @@ pub const FrameImageOptions = struct {
 pub inline fn frameImage(opt: FrameImageOptions) void {
     assert(opt.width % 4 == 0);
     assert(opt.height % 4 == 0);
-    assert(opt.image.len == opt.width * opt.height * 3);
-    assert(opt.width * opt.height * 3 / 6 <= 262144);
+    assert(opt.image.len == @as(isize, opt.width) * @as(isize, opt.height) * 4);
+    assert(@divTrunc(@as(isize, opt.width) * @as(isize, opt.height) * 4, 6) <= 262144);
     if (enabled) impl.c.___tracy_emit_frame_image(
         opt.image.ptr,
         opt.width,
