@@ -36,10 +36,12 @@ pub fn build(b: *std.Build) void {
     impl_enabled.addImport("tracy", tracy);
 
     const upstream = b.dependency("tracy", .{});
-    const lib_tracy = b.addStaticLibrary(.{
+    const lib_tracy = b.addLibrary(.{
         .name = "tracy",
-        .target = target,
-        .optimize = optimize_external,
+        .root_module = b.createModule(.{
+            .target = target,
+            .optimize = optimize_external,
+        }),
     });
     lib_tracy.addCSourceFiles(.{
         .root = upstream.path(""),
