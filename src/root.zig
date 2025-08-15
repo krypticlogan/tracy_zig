@@ -573,6 +573,13 @@ pub const Allocator = struct {
     }
 };
 
+/// Similar to `std.process.cleanExit()`, but allows the process to exit normally if Tracy is
+/// enabled. This prevents a hang if exiting while connected to the profiler.
+pub fn cleanExit() void {
+    if (enabled) return;
+    std.process.cleanExit();
+}
+
 pub const Color = packed struct(u32) {
     b: u8,
     g: u8,
